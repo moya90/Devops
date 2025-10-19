@@ -1,0 +1,66 @@
+# ============================================================
+# PIPELINE CI – Proyecto Flask (Sistema de Películas)
+# ============================================================
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  artifactName: 'build_artifact'
+
+steps:
+# 1️⃣ Configurar Python
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.10'
+  displayName: 'Usar Python 3.10'
+
+# 2️⃣ Instalar dependencias del sistema
+- script: |
+    sudo apt-get update -y
+    sudo apt-get install -y build-essential libssl-dev libffi-dev python3-dev
+  displayName: 'Instalar dependencias del sistema'
+
+# 3️⃣ Instalar dependencias Python
+- script: |
+    python -m pip install --upgrade pip setuptools wheel
+    pip install -r requirements.txt
+  displayName: 'Instalar dependencias Python'
+
+# 4️⃣ Levantar app con SQLite en background
+- script: |
+    export DATABASE_URL="sqlite:///test.db"
+    python -u app.py > app_stdout.log 2> app_stderr.log &
+    echo $! > app.pid
+    sleep 5
+  displayName: 'Levantar API Flask (modo test)'
+
+# 5️⃣ Ejecutar pruebas automáticas
+- script: |
+    python Test_api.py
+  displayName: 'Ejecutar Test_api.py'
+
+# 6️⃣ Apagar la aplicación
+- script: |
+    if [ -f app.pid ]; then
+      kill $(cat app.pid)
+    fi
+  displayName: 'Detener Flask'
+
+# 7️⃣ Empaquetar y publicar artifact
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '.'
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(artifactName).zip'
+    replaceExistingArchive: true
+  displayName: 'Empaquetar proyecto'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'
+  displayName: 'Publicar artifact'
